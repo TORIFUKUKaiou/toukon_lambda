@@ -12,7 +12,7 @@ ElixirベースのAWS Lambda関数。AWS Lambda Runtime APIを実装。
 │       └── handler.ex           # Lambda Runtime APIハンドラー
 ├── config/
 │   └── config.exs               # 設定ファイル
-├── python-lambda/               # Python版（プロトタイプ）
+
 ├── mix.exs                      # プロジェクト設定
 ├── mix.lock                     # 依存関係ロック
 ├── Dockerfile                   # Elixir Lambda用Docker設定
