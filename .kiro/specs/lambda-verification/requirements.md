@@ -2,19 +2,19 @@
 
 ## 概要
 
-このプロジェクトは、ElixirベースのAWS Lambda関数「闘魂Lambda」がAWS Lambda環境で実際に動作するかを検証するためのSpecです。現在のコードがLambda Runtime APIを正しく実装し、AWS Lambda環境で期待通りに動作することを確認する必要があります。
+このプロジェクトは、ElixirベースのAWS Lambda関数「闘魂Lambda」がローカル環境およびLocalStack環境で正しく動作するかを検証するためのSpecです。現在のコードがLambda Runtime APIを正しく実装し、AWS Lambda互換環境で期待通りに動作することを段階的に確認する必要があります。本番AWS環境での検証は別のSpecで実施します。
 
 ## 要件
 
 ### 要件1
 
-**ユーザーストーリー:** 開発者として、Elixir Lambda関数がAWS Lambda環境で正しく動作することを検証したい。本番環境に自信を持ってデプロイできるようにするため。
+**ユーザーストーリー:** 開発者として、Elixir Lambda関数がLambda Runtime APIを正しく実装していることを検証したい。AWS Lambda互換環境で期待通りに動作することを確認するため。
 
 #### 受け入れ基準
 
-1. WHEN Lambda関数がAWS Lambda環境で呼び出される THEN システムはタイムアウト制限内で有効なJSONレスポンスを返すこと
-2. WHEN Lambda Runtime APIがリクエストを受信する THEN システムはLambdaイベントとコンテキストを正しく解析すること
-3. WHEN 関数がイベントを処理する THEN システムはLambda Runtime APIを通じて適切な成功またはエラーレスポンスを返すこと
+1. WHEN Lambda関数がRuntime APIからイベントを受信する THEN システムはLambdaイベントとコンテキストを正しく解析すること
+2. WHEN 関数がイベントを処理する THEN システムはRuntime APIを通じて適切な成功レスポンスを返すこと
+3. WHEN 処理中にエラーが発生する THEN システムはRuntime APIエラーエンドポイントに適切なエラー情報を送信すること
 
 ### 要件2
 
