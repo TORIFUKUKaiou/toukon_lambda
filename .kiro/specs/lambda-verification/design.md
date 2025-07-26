@@ -37,12 +37,29 @@ sequenceDiagram
     participant T as テストスクリプト
     participant D as Docker/RIE
     participant L as LocalStack
+    participant M as メトリクス収集
     
-    T->>D: 1. ローカル検証（RIE使用）
-    D-->>T: レスポンス確認
+    Note over T,M: フェーズ1: ローカル検証
+    T->>D: 1.1 Dockerイメージビルド
+    T->>D: 1.2 RIEコンテナ起動
+    T->>D: 1.3 正常系テスト実行
+    D-->>T: レスポンス + ログ
+    T->>D: 1.4 異常系テスト実行
+    D-->>T: エラーハンドリング確認
+    T->>M: 1.5 パフォーマンス測定
     
-    T->>L: 2. LocalStack検証
-    L-->>T: AWS互換レスポンス確認
+    Note over T,M: フェーズ2: LocalStack検証
+    T->>L: 2.1 LocalStack起動
+    T->>L: 2.2 Lambda関数デプロイ
+    T->>L: 2.3 AWS互換性テスト
+    L-->>T: AWS互換レスポンス
+    T->>L: 2.4 障害注入テスト
+    L-->>T: 障害処理確認
+    T->>M: 2.5 パフォーマンス比較
+    
+    Note over T,M: フェーズ3: レポート生成
+    T->>M: 3.1 メトリクス集計
+    M-->>T: 統合レポート
     
     Note over T,L: 本番AWS環境検証は別Specで実施
 ```
@@ -78,6 +95,28 @@ sequenceDiagram
 - `deploy_lambda_function()` - Lambda関数デプロイ
 - `invoke_lambda_function(event)` - Lambda関数呼び出し
 - `verify_aws_compatibility()` - AWS互換性検証
+
+### 4. 障害注入テストコンポーネント
+
+**責任:** システムの耐障害性と回復力を検証
+
+**インターフェース:**
+
+- `inject_network_delay(delay_ms)` - ネットワーク遅延の注入
+- `simulate_api_failure(endpoint)` - APIエンドポイント障害の模擬
+- `inject_memory_pressure()` - メモリ不足状態の模擬
+- `simulate_timeout_scenario()` - タイムアウトシナリオの実行
+
+### 5. メトリクス収集・分析コンポーネント
+
+**責任:** パフォーマンスメトリクスの収集と分析
+
+**インターフェース:**
+
+- `collect_performance_metrics()` - パフォーマンスデータ収集
+- `analyze_response_times()` - レスポンス時間分析
+- `calculate_success_rate()` - 成功率計算
+- `generate_performance_report()` - パフォーマンスレポート生成
 
 
 
