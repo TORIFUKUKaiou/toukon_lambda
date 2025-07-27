@@ -91,14 +91,8 @@ setup-iam:
 	@echo "🔥 IAMロール作成..."
 	@aws iam create-role \
 	  --role-name toukon-lambda-execution-role \
-	  --assume-role-policy-document '{ \
-	    "Version": "2012-10-17", \
-	    "Statement": [{ \
-	      "Effect": "Allow", \
-	      "Principal": {"Service": "lambda.amazonaws.com"}, \
-	      "Action": "sts:AssumeRole" \
-	    }] \
-	  }' 2>/dev/null || echo "⚠️  IAMロールは既に存在します"
+	  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+	  2>/dev/null || echo "⚠️  IAMロールは既に存在します"
 	@aws iam attach-role-policy \
 	  --role-name toukon-lambda-execution-role \
 	  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole 2>/dev/null || true
