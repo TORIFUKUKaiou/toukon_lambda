@@ -1,7 +1,7 @@
 #!/usr/bin/env elixir
 
 # 🔥 Docker検証スクリプト
-# 
+#
 # 使用方法:
 #   elixir scripts/docker_verification.exs build
 #   elixir scripts/docker_verification.exs start
@@ -11,13 +11,17 @@
 
 Mix.install([
   {:jason, "~> 1.4"},
-  {:httpoison, "~> 2.0"}
+  {:req, "~> 0.5.15"}
 ])
 
-defmodule DockerVerificationScript do
+defmodule DockerVerification do
   @moduledoc """
-  Docker検証操作のためのスクリプト
+  RIEコンテナでのDocker検証
   """
+
+  @container_name "toukon-lambda-test"
+  @image_tag "toukon-lambda:local"
+  @port "8080"
 
   def main(args) do
     case args do
@@ -26,7 +30,7 @@ defmodule DockerVerificationScript do
       ["health"] -> check_health()
       ["logs"] -> show_logs()
       ["logs", "--follow"] -> show_logs(follow: true)
-      ["logs", "--tail", count] -> show_logs(tail: String.to_integer(count))
+      ["logs", "--tail", count] -> show_logs(tail: count)
       ["stop"] -> stop_container()
       ["clean"] -> clean_all()
       _ -> show_usage()
@@ -34,139 +38,148 @@ defmodule DockerVerificationScript do
   end
 
   defp build_image do
-    IO.puts("🔥 Dockerイメージビルド開始...")
-    
-    case System.cmd("docker", ["build", "-t", "toukon-lambda", "."], 
-                   stderr_to_stdout: true, into: IO.stream()) do
-      {_, 0} ->
-        IO.puts("🔥 Dockerイメージビルド成功!")
-        
-      {_, exit_code} ->
-        IO.puts("💥 Dockerイメージビルド失敗 (exit code: #{exit_code})")
+    IO.puts("🔨 Dockerイメージビルド中...")
+
+    case System.cmd(
+           "docker",
+           [
+             "build",
+             "--platform",
+             "linux/arm64",
+             "--target",
+             "development",
+             "-t",
+             @image_tag,
+             "."
+           ],
+           cd: File.cwd!()
+         ) do
+      {output, 0} ->
+        IO.puts("✅ ビルド成功")
+        IO.puts(output)
+
+      {error, code} ->
+        IO.puts("❌ ビルド失敗 (exit: #{code})")
+        IO.puts(error)
         System.halt(1)
     end
   end
 
   defp start_container do
-    IO.puts("🔥 RIEコンテナ起動開始...")
-    
+    IO.puts("🚀 RIEコンテナ起動中...")
+
     # 既存コンテナを停止・削除
-    System.cmd("docker", ["stop", "toukon-lambda-test"], stderr_to_stdout: true)
-    System.cmd("docker", ["rm", "toukon-lambda-test"], stderr_to_stdout: true)
-    
-    docker_args = [
-      "run",
-      "-d",
-      "--name", "toukon-lambda-test",
-      "-p", "8080:8080",
-      "toukon-lambda"
-    ]
-    
-    case System.cmd("docker", docker_args, stderr_to_stdout: true) do
+    System.cmd("docker", ["rm", "-f", @container_name], cd: File.cwd!())
+
+    case System.cmd(
+           "docker",
+           [
+             "run",
+             "--platform",
+             "linux/arm64",
+             "-d",
+             "-p",
+             "#{@port}:8080",
+             "--name",
+             @container_name,
+             @image_tag
+           ],
+           cd: File.cwd!()
+         ) do
       {output, 0} ->
-        IO.puts("🔥 RIEコンテナ起動成功!")
+        IO.puts("✅ コンテナ起動成功")
         IO.puts("Container ID: #{String.trim(output)}")
-        
-        # ヘルスチェック実行
-        IO.puts("🔥 ヘルスチェック実行中...")
+
+        IO.puts("⏳ コンテナの準備待機中...")
         wait_for_health()
-        
-      {output, exit_code} ->
-        IO.puts("💥 RIEコンテナ起動失敗 (exit code: #{exit_code})")
-        IO.puts(output)
+
+      {error, code} ->
+        IO.puts("❌ コンテナ起動失敗 (exit: #{code})")
+        IO.puts(error)
         System.halt(1)
     end
   end
 
   defp check_health do
-    IO.puts("🔥 コンテナヘルスチェック実行...")
-    
-    case System.cmd("docker", ["ps", "-q", "-f", "name=toukon-lambda-test"], 
-                   stderr_to_stdout: true) do
-      {"", 0} ->
-        IO.puts("💥 コンテナが実行されていません")
-        System.halt(1)
-        
-      {container_id, 0} ->
-        IO.puts("🔥 コンテナ実行中: #{String.trim(container_id)}")
-        
-        case check_lambda_endpoint() do
-          :ok ->
-            IO.puts("🔥 Lambda エンドポイント正常!")
-            
-          {:error, reason} ->
-            IO.puts("💥 Lambda エンドポイントエラー: #{inspect(reason)}")
-            System.halt(1)
-        end
-        
-      {output, exit_code} ->
-        IO.puts("💥 コンテナ状態確認失敗 (exit code: #{exit_code})")
-        IO.puts(output)
+    IO.puts("🔍 コンテナヘルスチェック...")
+
+    case check_lambda_endpoint() do
+      :ok ->
+        IO.puts("✅ Lambda エンドポイント準備完了!")
+
+      {:error, reason} ->
+        IO.puts("❌ ヘルスチェック失敗: #{inspect(reason)}")
         System.halt(1)
     end
   end
 
-  defp show_logs(options \\ []) do
-    log_args = ["logs"]
-    
-    log_args = if Keyword.get(options, :follow, false) do
-      log_args ++ ["--follow"]
-    else
-      log_args
-    end
-    
-    log_args = if tail = Keyword.get(options, :tail) do
-      log_args ++ ["--tail", to_string(tail)]
-    else
-      log_args
-    end
-    
-    log_args = log_args ++ ["--timestamps", "toukon-lambda-test"]
-    
-    case System.cmd("docker", log_args, stderr_to_stdout: true, into: IO.stream()) do
-      {_, 0} ->
-        :ok
-        
-      {_, exit_code} ->
-        IO.puts("💥 ログ取得失敗 (exit code: #{exit_code})")
+  defp show_logs(opts \\ []) do
+    IO.puts("📜 コンテナログ表示...")
+
+    args = ["logs", @container_name]
+    args = if opts[:follow], do: args ++ ["--follow"], else: args
+    args = if opts[:tail], do: args ++ ["--tail", opts[:tail]], else: args
+
+    case System.cmd("docker", args, cd: File.cwd!()) do
+      {output, 0} ->
+        IO.puts(output)
+
+      {error, code} ->
+        IO.puts("❌ ログ取得失敗 (exit: #{code})")
+        IO.puts(error)
         System.halt(1)
     end
   end
 
   defp stop_container do
-    IO.puts("🔥 コンテナ停止・削除...")
-    
-    System.cmd("docker", ["stop", "toukon-lambda-test"], stderr_to_stdout: true)
-    System.cmd("docker", ["rm", "toukon-lambda-test"], stderr_to_stdout: true)
-    
-    IO.puts("🔥 コンテナ停止完了!")
+    IO.puts("🛑 コンテナ停止中...")
+
+    case System.cmd("docker", ["stop", @container_name], cd: File.cwd!()) do
+      {_, 0} ->
+        IO.puts("✅ コンテナ停止完了")
+
+        case System.cmd("docker", ["rm", @container_name], cd: File.cwd!()) do
+          {_, 0} ->
+            IO.puts("✅ コンテナ削除完了")
+
+          {error, code} ->
+            IO.puts("⚠️ コンテナ削除失敗 (exit: #{code}): #{error}")
+        end
+
+      {error, code} ->
+        IO.puts("❌ コンテナ停止失敗 (exit: #{code})")
+        IO.puts(error)
+        System.halt(1)
+    end
   end
 
   defp clean_all do
-    IO.puts("🔥 全リソース削除...")
-    
+    IO.puts("🧹 全リソース削除中...")
+
     # コンテナ停止・削除
-    stop_container()
-    
+    System.cmd("docker", ["rm", "-f", @container_name], cd: File.cwd!())
+
     # イメージ削除
-    case System.cmd("docker", ["rmi", "toukon-lambda"], stderr_to_stdout: true) do
+    case System.cmd("docker", ["rmi", @image_tag], cd: File.cwd!()) do
       {_, 0} ->
-        IO.puts("🔥 イメージ削除完了!")
-        
-      {output, _} ->
-        IO.puts("⚠️ イメージ削除: #{output}")
+        IO.puts("✅ 全リソース削除完了")
+
+      {error, code} ->
+        IO.puts("⚠️ イメージ削除失敗 (exit: #{code}): #{error}")
     end
   end
 
   defp wait_for_health(attempts \\ 30) do
+    IO.write("Health check")
+
     if attempts <= 0 do
-      IO.puts("💥 ヘルスチェックタイムアウト")
+      IO.puts("\n❌ ヘルスチェックタイムアウト")
       System.halt(1)
     else
       case check_lambda_endpoint() do
         :ok ->
-          IO.puts("🔥 Lambda エンドポイント準備完了!")
-          
+          IO.puts("\n🔥 Lambda エンドポイント準備完了!")
+
         {:error, _reason} ->
           IO.write(".")
           Process.sleep(1000)
@@ -177,23 +190,24 @@ defmodule DockerVerificationScript do
 
   defp check_lambda_endpoint do
     url = "http://localhost:8080/2015-03-31/functions/function/invocations"
-    
-    payload = Jason.encode!(%{
+
+    payload = %{
       "test_type" => "health_check",
       "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
-    })
-    
-    headers = [{"Content-Type", "application/json"}]
-    
-    case HTTPoison.post(url, payload, headers, recv_timeout: 5_000) do
-      {:ok, %HTTPoison.Response{status_code: status_code}} when status_code in 200..299 ->
+    }
+
+    case Req.post(url,
+           json: payload,
+           receive_timeout: 5_000
+         ) do
+      {:ok, %{status: status}} when status in 200..299 ->
         :ok
-        
-      {:ok, %HTTPoison.Response{status_code: status_code, body: body}} ->
-        {:error, {:http_error, status_code, body}}
-        
-      {:error, %HTTPoison.Error{reason: reason}} ->
-        {:error, {:http_request_failed, reason}}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, {:http_error, status, body}}
+
+      {:error, exception} ->
+        {:error, {:request_failed, exception}}
     end
   end
 
@@ -222,5 +236,8 @@ defmodule DockerVerificationScript do
   end
 end
 
-# スクリプト実行
-DockerVerificationScript.main(System.argv())
+# メイン実行
+case System.argv() do
+  [] -> DockerVerification.main([])
+  args -> DockerVerification.main(args)
+end

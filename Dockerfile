@@ -1,68 +1,103 @@
-# マルチステージビルドで最適化（M2 Mac + AWS Lambda対応）
+# 🔥 闘魂Lambda Dockerfile - 統合最適化版
+# マルチステージビルド + サイズ最適化 + AWS Lambda対応
+
+# =============================================================================
+# ビルドステージ（共通）
+# =============================================================================
 FROM hexpm/elixir:1.18.4-erlang-28.0.2-alpine-3.22.1 AS builder
 
-# 作業ディレクトリ設定
 WORKDIR /app
 
-# 依存関係解決に必要なパッケージをインストール（M2 Mac対応）
-RUN apk add --no-cache build-base git libstdc++ libgcc curl
+# ビルド依存関係を一括インストール（レイヤー最適化）
+RUN apk add --no-cache --virtual .build-deps \
+    build-base \
+    git && \
+    apk add --no-cache \
+    libstdc++ \
+    libgcc
 
-# Mix設定（非対話モード）
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TERM=xterm
+# Mix設定（本番用最適化）
+ENV MIX_ENV=prod \
+    ERL_FLAGS="+JPperf true +sbwt very_short +swt very_low" \
+    ELIXIR_ERL_OPTIONS="+JPperf true" \
+    DEBIAN_FRONTEND=noninteractive \
+    TERM=xterm
+
 RUN mix local.hex --force && \
     mix local.rebar --force
 
-# 依存関係ファイルをコピー（Docker層キャッシュ最適化）
+# 依存関係ファイルをコピー（キャッシュ効率化）
 COPY mix.exs mix.lock ./
 
-# 本番用依存関係を取得
-ENV MIX_ENV=prod
-RUN mix deps.get --only prod
-
-# 依存関係をコンパイル
-RUN mix deps.compile
+# 本番用依存関係を取得・コンパイル
+RUN mix deps.get --only prod && \
+    mix deps.compile
 
 # アプリケーションコードをコピー
 COPY config ./config
 COPY lib ./lib
 
-# アプリケーションをコンパイル
-RUN mix compile
+# アプリケーションをコンパイル + リリース
+RUN mix compile && \
+    mix release --overwrite
 
-# リリースビルド（最適化）
-RUN mix release --overwrite
+# ビルド依存関係を削除（サイズ削減）
+RUN apk del .build-deps
 
-# === ランタイムステージ（M2 Mac + AWS Lambda対応） ===
+# =============================================================================
+# 本番ランタイム（極限最適化版 - AWS Lambda推奨）
+# =============================================================================
 FROM alpine:3.22.1 AS runtime
 
-# 必要なランタイム依存関係をインストール（M2 Mac対応 + AWS Lambda対応）
+# 最小限のランタイム依存関係のみ
 RUN apk add --no-cache \
-    openssl \
-    ncurses-libs \
-    bash \
-    ca-certificates \
     libstdc++ \
     libgcc \
-    curl
+    ncurses-libs
 
-# AWS Lambda Runtime Interface Emulator (RIE)をインストール
-RUN curl -Lo /usr/local/bin/aws-lambda-rie \
-    https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie && \
-    chmod +x /usr/local/bin/aws-lambda-rie
+# AWS Lambda RIE（開発・テスト用、本番では不要）
+ARG INSTALL_RIE=false
+RUN if [ "$INSTALL_RIE" = "true" ]; then \
+        wget -q -O /usr/local/bin/aws-lambda-rie \
+        https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie && \
+        chmod +x /usr/local/bin/aws-lambda-rie; \
+    fi
 
-# 作業ディレクトリ設定
 WORKDIR /var/task
 
 # ビルドしたリリースをコピー
 COPY --from=builder /app/_build/prod/rel/toukon_lambda ./
 
-# Lambda用ブートストラップスクリプトをコピー
+# 最適化ブートストラップスクリプト
+COPY bootstrap.optimized /var/task/bootstrap
+RUN chmod +x /var/task/bootstrap
+
+# 環境変数（パフォーマンス最適化）
+ENV PATH="/var/task/bin:$PATH" \
+    ERL_FLAGS="+JPperf true +sbwt very_short +swt very_low" \
+    ELIXIR_ERL_OPTIONS="+JPperf true"
+
+# 極限サイズ削減（不要ファイル削除）
+RUN find /var/task -type f \( -name "*.beam.cache" -o -name "*.app.src" -o -name "*.debug" \) -delete && \
+    find /var/task -type d -name "src" -exec rm -rf {} + 2>/dev/null || true && \
+    find /var/task -type d -name "include" -exec rm -rf {} + 2>/dev/null || true && \
+    rm -rf /var/task/releases/*/lib/*/ebin/*.app.src 2>/dev/null || true
+
+ENTRYPOINT ["/var/task/bootstrap"]
+
+# =============================================================================
+# 開発用ランタイム（ローカルテスト用 - RIE付き）
+# =============================================================================
+FROM runtime AS development
+
+# 開発用に追加パッケージをインストール（bash + RIE）
+RUN apk add --no-cache bash && \
+    wget -q -O /usr/local/bin/aws-lambda-rie \
+    https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie && \
+    chmod +x /usr/local/bin/aws-lambda-rie
+
+# 開発用ブートストラップ（RIE対応 - 元のbootstrapファイル）
 COPY bootstrap /var/task/bootstrap
 RUN chmod +x /var/task/bootstrap
 
-# Lambda Runtime Interface Emulator用の設定
-ENV PATH="/var/task/bin:$PATH"
-
-# エントリポイント設定
 ENTRYPOINT ["/var/task/bootstrap"]
