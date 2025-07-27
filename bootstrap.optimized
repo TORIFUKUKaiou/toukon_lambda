@@ -1,0 +1,19 @@
+#!/bin/sh
+set -euo pipefail
+
+# 🔥 闘魂Lambda エントリポイント（最適化版対応）
+
+if [ -z "${AWS_LAMBDA_RUNTIME_API:-}" ]; then
+    # ローカル実行時
+    if [ -f "/usr/local/bin/aws-lambda-rie" ]; then
+        echo "🔥 ローカル実行モード: RIE起動"
+        exec /usr/local/bin/aws-lambda-rie /var/task/bin/toukon_lambda start
+    else
+        echo "🔥 ローカル実行モード: 直接起動（RIE無し）"
+        exec /var/task/bin/toukon_lambda start
+    fi
+else
+    # AWS Lambda環境での実行
+    echo "🔥 AWS Lambda環境: 直接実行"
+    exec /var/task/bin/toukon_lambda start
+fi

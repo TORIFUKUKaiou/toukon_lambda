@@ -1,0 +1,102 @@
+# 🔥 Ultra-Minimal Dockerfile - 極限サイズ削減版
+# distroless ベース + 最小限依存関係
+
+# === ビルドステージ（通常版と同じ） ===
+FROM hexpm/elixir:1.18.4-erlang-28.0.2-alpine-3.22.1 AS builder
+
+WORKDIR /app
+
+# ビルド依存関係（最小限）
+RUN apk add --no-cache --virtual .build-deps \
+    build-base \
+    git && \
+    apk add --no-cache \
+    libstdc++ \
+    libgcc
+
+# Mix設定（最適化モード）
+ENV MIX_ENV=prod \
+    ERL_FLAGS="+JPperf true +sbwt very_short +swt very_low" \
+    ELIXIR_ERL_OPTIONS="+JPperf true"
+
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# 依存関係
+COPY mix.exs mix.lock ./
+RUN mix deps.get --only prod && \
+    mix deps.compile
+
+# アプリケーション
+COPY config ./config
+COPY lib ./lib
+
+# 最適化コンパイル + リリース
+RUN mix compile && \
+    mix release --overwrite
+
+# ビルド依存関係削除
+RUN apk del .build-deps
+
+# === Ultra-Minimal ランタイム（gcr.io/distroless/base） ===
+FROM gcr.io/distroless/base-debian12:latest AS ultra-runtime
+
+# 作業ディレクトリ
+WORKDIR /var/task
+
+# 必要最小限のライブラリコピー（Alpineから）
+COPY --from=alpine:3.22.1 /lib/ld-musl-x86_64.so.1 /lib/
+COPY --from=alpine:3.22.1 /usr/lib/libstdc++.so.6 /usr/lib/
+COPY --from=alpine:3.22.1 /usr/lib/libgcc_s.so.1 /usr/lib/
+COPY --from=alpine:3.22.1 /lib/libc.musl-x86_64.so.1 /lib/
+
+# ビルドしたリリースをコピー
+COPY --from=builder /app/_build/prod/rel/toukon_lambda ./
+
+# Lambda用ブートストラップスクリプト
+COPY bootstrap /var/task/bootstrap
+
+# 環境変数
+ENV PATH="/var/task/bin:$PATH"
+
+# エントリポイント
+ENTRYPOINT ["/var/task/bootstrap"]
+
+# === 標準最適化ランタイム（Alpine基準） ===
+FROM alpine:3.22.1 AS runtime
+
+# 最小限のランタイム依存関係
+RUN apk add --no-cache \
+    libstdc++ \
+    libgcc \
+    ncurses-libs
+
+# AWS Lambda RIE（RIE無し版も選択可能）
+ARG INSTALL_RIE=false
+RUN if [ "$INSTALL_RIE" = "true" ]; then \
+        wget -q -O /usr/local/bin/aws-lambda-rie \
+        https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie && \
+        chmod +x /usr/local/bin/aws-lambda-rie; \
+    fi
+
+WORKDIR /var/task
+
+# ビルドしたリリースをコピー
+COPY --from=builder /app/_build/prod/rel/toukon_lambda ./
+
+# ブートストラップ
+COPY bootstrap.optimized /var/task/bootstrap
+RUN chmod +x /var/task/bootstrap
+
+# 環境変数（パフォーマンス最適化）
+ENV PATH="/var/task/bin:$PATH" \
+    ERL_FLAGS="+JPperf true +sbwt very_short +swt very_low" \
+    ELIXIR_ERL_OPTIONS="+JPperf true"
+
+# 極限サイズ削減（不要ファイル削除）
+RUN find /var/task -type f \( -name "*.beam.cache" -o -name "*.app.src" -o -name "*.debug" \) -delete && \
+    find /var/task -type d -name "src" -exec rm -rf {} + 2>/dev/null || true && \
+    find /var/task -type d -name "include" -exec rm -rf {} + 2>/dev/null || true && \
+    rm -rf /var/task/releases/*/lib/*/ebin/*.app.src 2>/dev/null || true
+
+ENTRYPOINT ["/var/task/bootstrap"]

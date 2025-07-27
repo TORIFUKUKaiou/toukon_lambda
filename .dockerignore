@@ -1,0 +1,70 @@
+# 🔥 .dockerignore - ビルド高速化 & サイズ削減
+
+# Git関連
+.git
+.gitignore
+.gitattributes
+
+# ドキュメント
+README.md
+CHANGELOG.md
+LICENSE
+*.md
+
+# 開発環境
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ビルド出力（必要なもの以外）
+_build/dev/
+_build/test/
+deps/*/doc/
+deps/*/.git/
+
+# テスト関連
+test/
+cover/
+doc/
+docs/
+
+# ログファイル
+*.log
+logs/
+
+# 一時ファイル
+tmp/
+temp/
+.tmp/
+
+# OS固有
+.DS_Store
+Thumbs.db
+
+# Docker関連
+Dockerfile.optimized
+.dockerignore
+
+# Lambda関連
+response.json
+.aws/
+
+# Elixir/Erlang固有
+.elixir_ls/
+_build/dev/
+_build/test/
+deps/*/ebin/*.app
+deps/*/c_src/
+deps/*/src/
+
+# IDE設定
+.settings/
+.project
+.classpath
+
+# その他
+node_modules/
+npm-debug.log
+yarn-error.log

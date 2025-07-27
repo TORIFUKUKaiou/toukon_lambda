@@ -17,8 +17,8 @@ LAMBDA_ROLE = arn:aws:iam::$(AWS_ACCOUNT_ID):role/toukon-lambda-execution-role
 # =============================================================================
 # メインターゲット
 # =============================================================================
-.PHONY: help setup build-local build-aws test-aws clean
-.PHONY: setup-iam setup-ecr push create-lambda update-lambda test-lambda deploy status verify-complete
+.PHONY: help setup build-local build-aws build-aws-optimized test-aws clean
+.PHONY: setup-iam setup-ecr push push-optimized create-lambda update-lambda test-lambda deploy status verify-complete
 
 # デフォルトターゲット
 help:
@@ -32,12 +32,14 @@ help:
 	@echo "🔧 開発コマンド:"
 	@echo "  build-local    - ローカル開発用ビルド (ARM64)"
 	@echo "  build-aws      - AWS Lambda用ビルド (x86_64)"
+	@echo "  build-aws-optimized - AWS Lambda用最適化ビルド（サイズ重視）"
 	@echo "  test-aws       - AWS互換テスト"
 	@echo "  verify-complete- 完全検証テスト（推奨）"
 	@echo ""
 	@echo "☁️  AWSコマンド:"
 	@echo "  setup          - AWS環境セットアップ（IAM + ECR）"
 	@echo "  push           - ECRにプッシュ"
+	@echo "  push-optimized - 最適化版ECRプッシュ（サイズ重視）"
 	@echo "  create-lambda  - Lambda関数作成"
 	@echo "  update-lambda  - Lambda関数更新"
 	@echo "  test-lambda    - 本番Lambda関数テスト"
@@ -67,6 +69,22 @@ build-aws:
 	docker build --platform linux/amd64 -t toukon-lambda:aws .
 	@echo "✅ AWS互換ビルド完了"
 	@docker images toukon-lambda:aws --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
+# AWS Lambda用（最適化版 - サイズ重視）
+build-aws-optimized:
+	@echo "🔥 AWS Lambda用最適化ビルド開始..."
+	docker build --platform linux/amd64 -f Dockerfile.optimized -t toukon-lambda:optimized .
+	@echo "✅ 最適化ビルド完了"
+	@echo "📊 サイズ比較:"
+	@docker images toukon-lambda --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+
+# AWS Lambda用（極限最適化版 - 極小サイズ）
+build-aws-minimal:
+	@echo "🔥 AWS Lambda用極限最適化ビルド開始..."
+	docker build --platform linux/amd64 -f Dockerfile.minimal --target runtime -t toukon-lambda:minimal .
+	@echo "✅ 極限最適化ビルド完了"
+	@echo "📊 全サイズ比較:"
+	@docker images toukon-lambda --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
 
 # AWS互換テスト
 test-aws: build-aws
@@ -129,6 +147,25 @@ push: build-aws setup-ecr
 	
 	@echo "✅ ECRプッシュ完了！"
 	@echo "🔗 Lambda関数作成用URI: $(ECR_URI):latest"
+
+# ECRプッシュ（最適化版）
+push-optimized: build-aws-optimized setup-ecr
+	@echo "🔥 最適化版ECRプッシュ開始..."
+	@echo "🔐 ECRにログイン中..."
+	@aws ecr get-login-password --region $(AWS_REGION) | \
+	  docker login --username AWS --password-stdin $(ECR_URI) || \
+	  (echo "❌ ECRログイン失敗。AWS認証情報を確認してください" && exit 1)
+	
+	@echo "🏷️  最適化イメージタグ付け..."
+	docker tag toukon-lambda:optimized $(ECR_URI):optimized
+	docker tag toukon-lambda:optimized $(ECR_URI):latest-optimized
+	
+	@echo "📤 最適化版ECRプッシュ実行..."
+	docker push $(ECR_URI):optimized
+	docker push $(ECR_URI):latest-optimized
+	
+	@echo "✅ 最適化版ECRプッシュ完了！"
+	@echo "🔗 最適化Lambda関数用URI: $(ECR_URI):optimized"
 
 # Lambda関数作成
 create-lambda: setup-iam
