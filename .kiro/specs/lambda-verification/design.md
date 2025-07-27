@@ -2,7 +2,7 @@
 
 ## 概要
 
-この設計書は、ElixirベースのAWS Lambda関数「闘魂Lambda」の動作検証システムの設計を定義します。検証システムは、ローカル環境（RIE使用）とLocalStack環境での動作を段階的に検証し、Lambda Runtime APIの実装が正しく動作することを確認します。本番AWS環境での検証は別のSpecで実施します。
+この設計書は、ElixirベースのAWS Lambda関数「闘魂Lambda」の動作検証システムの設計を定義します。検証システムは、ローカル環境（Docker Runtime Interface Emulator使用）での動作を検証し、Lambda Runtime APIの実装が正しく動作することを確認します。本番AWS環境での検証は別のSpecで実施します。
 
 ## アーキテクチャ
 
@@ -12,7 +12,6 @@
 graph TB
     subgraph "検証環境"
         A[テストスクリプト] --> B[Docker Container + RIE]
-        A --> C[LocalStack Container]
     end
     
     subgraph "Docker Container + RIE"
@@ -22,12 +21,6 @@ graph TB
         G --> H[Runtime API Client]
         B --> I[Runtime Interface Emulator]
     end
-    
-    subgraph "LocalStack Container"
-        C --> J[Lambda Service]
-        J --> K[CloudWatch Logs]
-        J --> L[Lambda Runtime API]
-    end
 ```
 
 ### 検証フロー
@@ -36,7 +29,6 @@ graph TB
 sequenceDiagram
     participant T as テストスクリプト
     participant D as Docker/RIE
-    participant L as LocalStack
     participant M as メトリクス収集
     
     Note over T,M: フェーズ1: ローカル検証
@@ -48,20 +40,11 @@ sequenceDiagram
     D-->>T: エラーハンドリング確認
     T->>M: 1.5 パフォーマンス測定
     
-    Note over T,M: フェーズ2: LocalStack検証
-    T->>L: 2.1 LocalStack起動
-    T->>L: 2.2 Lambda関数デプロイ
-    T->>L: 2.3 AWS互換性テスト
-    L-->>T: AWS互換レスポンス
-    T->>L: 2.4 障害注入テスト
-    L-->>T: 障害処理確認
-    T->>M: 2.5 パフォーマンス比較
-    
-    Note over T,M: フェーズ3: レポート生成
-    T->>M: 3.1 メトリクス集計
+    Note over T,M: フェーズ2: レポート生成
+    T->>M: 2.1 メトリクス集計
     M-->>T: 統合レポート
     
-    Note over T,L: 本番AWS環境検証は別Specで実施
+    Note over T,D: 本番AWS環境検証は別Specで実施
 ```
 
 ## コンポーネントと インターフェース
@@ -72,7 +55,6 @@ sequenceDiagram
 
 **インターフェース:**
 - `run_local_verification()` - RIEを使用したローカル検証
-- `run_localstack_verification()` - LocalStackを使用した検証
 - `validate_response(response)` - レスポンス検証
 - `generate_test_report()` - 検証結果レポート生成
 
@@ -86,17 +68,7 @@ sequenceDiagram
 - `send_test_request(payload)` - テストリクエスト送信
 - `verify_container_logs()` - コンテナログ検証
 
-### 3. LocalStack検証コンポーネント
-
-**責任:** LocalStack環境でのLambda関数デプロイと実行検証
-
-**インターフェース:**
-- `setup_localstack()` - LocalStack環境セットアップ
-- `deploy_lambda_function()` - Lambda関数デプロイ
-- `invoke_lambda_function(event)` - Lambda関数呼び出し
-- `verify_aws_compatibility()` - AWS互換性検証
-
-### 4. 障害注入テストコンポーネント
+### 3. 障害注入テストコンポーネント
 
 **責任:** システムの耐障害性と回復力を検証
 
@@ -107,7 +79,7 @@ sequenceDiagram
 - `inject_memory_pressure()` - メモリ不足状態の模擬
 - `simulate_timeout_scenario()` - タイムアウトシナリオの実行
 
-### 5. メトリクス収集・分析コンポーネント
+### 4. メトリクス収集・分析コンポーネント
 
 **責任:** パフォーマンスメトリクスの収集と分析
 
@@ -159,7 +131,7 @@ sequenceDiagram
 %{
   "verification_id" => "uuid",
   "timestamp" => "2025-01-27T10:00:00Z",
-  "environment" => "local|localstack|aws",
+  "environment" => "local|aws",
   "test_cases" => [
     %{
       "name" => "basic_invocation",
@@ -230,7 +202,6 @@ end
 ### 2. 統合テスト
 
 - Docker環境での統合テスト
-- LocalStack環境での統合テスト
 
 ### 3. パフォーマンステスト
 
@@ -251,7 +222,6 @@ end
 ### 1. 認証・認可
 
 - AWS IAMロールの適切な設定
-- LocalStack環境でのアクセス制御
 - テスト用認証情報の管理
 
 ### 2. データ保護
@@ -303,7 +273,6 @@ Logger.error("💥 検証エラー", %{
 ### 1. 段階的検証
 
 1. **ローカル検証** - RIEを使用した開発環境での基本動作確認
-2. **LocalStack検証** - AWS互換環境での動作確認
 
 ### 2. 自動化
 
