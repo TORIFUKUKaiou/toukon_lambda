@@ -78,6 +78,7 @@ defmodule ToukonLambda.Handler do
            pool_timeout: :infinity
          ) do
       {:ok, %{status: 200, body: body, headers: headers}} ->
+        Logger.info("🔥 Headers format: #{inspect(headers)}")
         request_id = get_header_value(headers, "lambda-runtime-aws-request-id")
         deadline_ms = get_header_value(headers, "lambda-runtime-deadline-ms")
         function_arn = get_header_value(headers, "lambda-runtime-invoked-function-arn")
@@ -86,9 +87,10 @@ defmodule ToukonLambda.Handler do
         Logger.info("🔥 Lambda リクエスト受信: #{request_id}")
         Logger.info("🔥 Function ARN: #{function_arn}")
         Logger.info("🔥 Deadline: #{deadline_ms}")
+        Logger.info("🔥 Trace ID: #{inspect(trace_id)}")
 
         # X-Ray Trace IDを設定
-        if trace_id do
+        if trace_id && is_binary(trace_id) do
           System.put_env("_X_AMZN_TRACE_ID", trace_id)
         end
 
@@ -191,7 +193,14 @@ defmodule ToukonLambda.Handler do
     Req.post(url, json: error_payload)
   end
 
-  defp get_header_value(headers, header_name) do
+  defp get_header_value(headers, header_name) when is_map(headers) do
+    # Reqはheadersをmapで返す場合
+    key = String.downcase(header_name)
+    headers[key] || headers[header_name]
+  end
+
+  defp get_header_value(headers, header_name) when is_list(headers) do
+    # 従来のリスト形式の場合
     case Enum.find(headers, fn {name, _value} ->
            String.downcase(name) == String.downcase(header_name)
          end) do
@@ -199,6 +208,8 @@ defmodule ToukonLambda.Handler do
       nil -> nil
     end
   end
+
+  defp get_header_value(_headers, _header_name), do: nil
 
   defp process_lambda_event(event, context) do
     # Lambda環境用の処理
