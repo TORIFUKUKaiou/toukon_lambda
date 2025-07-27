@@ -162,6 +162,7 @@ test-lambda:
 	@echo "🔥 本番Lambda関数テスト実行..."
 	@aws lambda invoke \
 	  --function-name $(LAMBDA_FUNCTION_NAME) \
+	  --cli-binary-format raw-in-base64-out \
 	  --payload '{"test": "production", "message": "本番闘魂テスト", "timestamp": "'$$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
 	  --region $(AWS_REGION) \
 	  response.json > /dev/null
