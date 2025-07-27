@@ -12,7 +12,7 @@ LAMBDA_MEMORY ?= 512
 # 自動取得される値
 AWS_ACCOUNT_ID ?= $(shell aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "PLEASE_SET_AWS_ACCOUNT_ID")
 ECR_URI = $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(ECR_REPO_NAME)
-LAMBDA_ROLE = arn:aws:iam::$(AWS_ACCOUNT_ID):role/lambda-execution-role
+LAMBDA_ROLE = arn:aws:iam::$(AWS_ACCOUNT_ID):role/toukon-lambda-execution-role
 
 # =============================================================================
 # メインターゲット
@@ -90,7 +90,7 @@ setup: setup-iam setup-ecr
 setup-iam:
 	@echo "🔥 IAMロール作成..."
 	@aws iam create-role \
-	  --role-name lambda-execution-role \
+	  --role-name toukon-lambda-execution-role \
 	  --assume-role-policy-document '{ \
 	    "Version": "2012-10-17", \
 	    "Statement": [{ \
@@ -100,7 +100,7 @@ setup-iam:
 	    }] \
 	  }' 2>/dev/null || echo "⚠️  IAMロールは既に存在します"
 	@aws iam attach-role-policy \
-	  --role-name lambda-execution-role \
+	  --role-name toukon-lambda-execution-role \
 	  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole 2>/dev/null || true
 	@echo "✅ IAMロール準備完了"
 
