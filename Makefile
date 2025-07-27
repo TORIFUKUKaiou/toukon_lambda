@@ -17,8 +17,8 @@ LAMBDA_ROLE = arn:aws:iam::$(AWS_ACCOUNT_ID):role/lambda-execution-role
 # =============================================================================
 # メインターゲット
 # =============================================================================
-.PHONY: help setup build-local build-aws test-local test-aws clean
-.PHONY: setup-iam setup-ecr push create-lambda update-lambda test-lambda deploy status
+.PHONY: help setup build-local build-aws test-aws clean
+.PHONY: setup-iam setup-ecr push create-lambda update-lambda test-lambda deploy status verify-complete
 
 # デフォルトターゲット
 help:
@@ -32,8 +32,8 @@ help:
 	@echo "🔧 開発コマンド:"
 	@echo "  build-local    - ローカル開発用ビルド (ARM64)"
 	@echo "  build-aws      - AWS Lambda用ビルド (x86_64)"
-	@echo "  test-local     - ローカルテスト"
 	@echo "  test-aws       - AWS互換テスト"
+	@echo "  verify-complete- 完全検証テスト（推奨）"
 	@echo ""
 	@echo "☁️  AWSコマンド:"
 	@echo "  setup          - AWS環境セットアップ（IAM + ECR）"
@@ -67,11 +67,6 @@ build-aws:
 	docker build --platform linux/amd64 -t toukon-lambda:aws .
 	@echo "✅ AWS互換ビルド完了"
 	@docker images toukon-lambda:aws --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
-
-# ローカルテスト
-test-local: build-local
-	@echo "🔥 ローカルテスト実行..."
-	echo '{"test": "local", "message": "ローカル闘魂テスト"}' | docker run -i toukon-lambda:local
 
 # AWS互換テスト
 test-aws: build-aws
@@ -237,3 +232,11 @@ clean:
 	@docker rmi toukon-lambda:local toukon-lambda:aws 2>/dev/null || true
 	@docker system prune -f
 	@echo "✅ クリーンアップ完了"
+
+# 推奨: Makefileターゲット追加
+verify-complete: build-local
+	@docker rm -f toukon-lambda-rie 2>/dev/null || true
+	@docker run -d -p 8080:8080 --name toukon-lambda-rie toukon-lambda:local
+	@sleep 5
+	@elixir scripts/run_verification.exs all
+	@docker rm -f toukon-lambda-rie
