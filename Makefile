@@ -235,8 +235,8 @@ clean:
 
 # 推奨: Makefileターゲット追加
 verify-complete: build-local
-	@docker rm -f toukon-lambda-rie 2>/dev/null || true
-	@docker run -d -p 8080:8080 --name toukon-lambda-rie toukon-lambda:local
+	@docker rm -f toukon-lambda-test 2>/dev/null || true
+	@docker run -d -p 8080:8080 --name toukon-lambda-test toukon-lambda:local
 	@sleep 5
 	@elixir scripts/run_verification.exs all
-	@docker rm -f toukon-lambda-rie
+	@docker rm -f toukon-lambda-test
