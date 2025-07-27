@@ -5,14 +5,14 @@ import Config
 # ログレベル設定
 config :logger, level: :info
 
-# HTTPoisonの設定（Lambda Runtime API対応）
-config :httpoison,
-  timeout: :infinity,
-  recv_timeout: :infinity,
-  hackney: [
-    pool: false,
-    checkout_timeout: :infinity,
-    recv_timeout: :infinity
+# Reqの設定（Lambda Runtime API対応）
+config :req,
+  default_options: [
+    receive_timeout: :infinity,
+    pool_timeout: :infinity,
+    connect_options: [
+      timeout: :infinity
+    ]
   ]
 
 # 本番環境設定
@@ -21,9 +21,11 @@ if config_env() == :prod do
   config :logger,
     level: :info,
     backends: [:console]
-    
+
   # Lambda環境での最適化
-  config :httpoison,
-    timeout: 60_000,
-    recv_timeout: 60_000
+  config :req,
+    default_options: [
+      receive_timeout: 60_000,
+      pool_timeout: 60_000
+    ]
 end

@@ -238,8 +238,8 @@ verify-complete: build-local
 	@docker run --platform linux/arm64 -d -p 8080:8080 --name toukon-lambda-test toukon-lambda:local
 	@sleep 5
 	@echo "🧪 検証スクリプト実行..."
-	@if [ -f "scripts/run_verification.exs" ]; then \
-		elixir scripts/run_verification.exs all || echo "⚠️ 検証スクリプト実行に問題がありましたが、コンテナは動作中です"; \
+	@if [ -f "scripts/run_verification_simple.exs" ]; then \
+		elixir scripts/run_verification_simple.exs all || echo "⚠️ 検証スクリプト実行に問題がありましたが、コンテナは動作中です"; \
 	else \
 		echo "🔧 手動テスト実行..."; \
 		curl -X POST "http://localhost:8080/2015-03-31/functions/function/invocations" \
